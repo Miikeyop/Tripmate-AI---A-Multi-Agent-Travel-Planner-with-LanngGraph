@@ -2,10 +2,14 @@ langgraph
 langchain
 langchain-groq
 langchain-tavily
-
+tavily
 requests
 python-dotenv
 pydantic
-
+python-dotenv
+pycountry
+requests
+airportsdata
 psycopg[binary,pool]
 langgraph-checkpoint-postgres
+
