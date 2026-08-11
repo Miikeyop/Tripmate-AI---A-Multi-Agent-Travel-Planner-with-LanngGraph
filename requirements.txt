@@ -10,6 +10,9 @@ python-dotenv
 pycountry
 requests
 airportsdata
+fastapi
+uvicorn
+jinja2
 psycopg[binary,pool]
 langgraph-checkpoint-postgres
 
