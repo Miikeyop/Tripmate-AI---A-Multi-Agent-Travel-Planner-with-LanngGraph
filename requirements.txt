@@ -15,4 +15,8 @@ uvicorn
 jinja2
 psycopg[binary,pool]
 langgraph-checkpoint-postgres
+langchain-mcp-adapters
+mcp
+asyncio
+nest-asyncio
 

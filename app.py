@@ -9,8 +9,12 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from backend import run_travel_agent
+# for nested async loop event 
+import nest_asyncio
+nest_asyncio.apply()
 
 BASE_DIR = Path(__file__).resolve().parent
+
 
 app = FastAPI( 
     title="TripMate AI", 
