@@ -1,72 +1,97 @@
 from langchain_mcp_adapters.client import MultiServerMCPClient
+
 import asyncio
 import os
 from dotenv import load_dotenv
 import certifi
+
+
+# --------------------------------------------------
+# Load environment variables
+# --------------------------------------------------
 
 load_dotenv()
 
 os.environ["SSL_CERT_FILE"] = certifi.where()
 os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
 
+
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 AVIATIONSTACK_API_KEY = os.getenv("AVIATIONSTACK_API_KEY")
-OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 
+
+# --------------------------------------------------
+# MCP Client
+# --------------------------------------------------
 
 client = MultiServerMCPClient(
     {
-        # Remote MCP server
+
+        # ==========================================
+        # 1. TAVILY MCP SERVER
+        # ==========================================
+
         "tavily": {
             "transport": "streamable_http",
             "url": f"https://mcp.tavily.com/mcp/?tavilyApiKey={TAVILY_API_KEY}"
         },
 
-        # Local MCP server - AviationStack
+
+        # ==========================================
+        # 2. AVIATIONSTACK MCP SERVER
+        # ==========================================
+
         "aviationstack": {
             "transport": "stdio",
+
             "command": "uvx",
+
             "args": [
                 "--python", "3.13",
                 "--with", "mcp==1.12.4",
                 "--with", "aviationstack-mcp",
                 "aviationstack-mcp"
             ],
+
             "env": {
                 "AVIATION_STACK_API_KEY": AVIATIONSTACK_API_KEY
             }
         },
 
-        # Local MCP server - Weather
+
+        # ==========================================
+        # 3. WEATHER MCP SERVER
+        # ==========================================
+
         "weather": {
             "transport": "stdio",
-            "command": "uvx",
+
+            "command": "npx",
+
             "args": [
-                "--from",
-                "git+https://github.com/adhikasp/mcp-weather.git",
-                "mcp-weather"
-            ],
-            "env": {
-                "ACCUWEATHER_API_KEY": OPENWEATHER_API_KEY
-            }
+                "-y",
+                "@open-mcp/open-weather"
+            ]
         }
+
     }
 )
 
 
-async def get_tools():
-
-    tools = await client.get_tools()
-
-    for tool in tools:
-        print(tool.name)
-
-
+# --------------------------------------------------
 # Store selected tools
+# --------------------------------------------------
+
 TAVILY_SEARCH_TOOL = None
+
 aviation_tools = []
+
 weather_tools = []
 
+
+# --------------------------------------------------
+# Initialize MCP
+# --------------------------------------------------
 
 async def initialize_mcp():
 
@@ -74,6 +99,8 @@ async def initialize_mcp():
     global aviation_tools
     global weather_tools
 
+
+    # Already initialized
     if (
         TAVILY_SEARCH_TOOL is not None
         and aviation_tools
@@ -81,30 +108,64 @@ async def initialize_mcp():
     ):
         return
 
+
+    # Get tools from all MCP servers
     tools = await client.get_tools()
 
-    print("Available MCP tools:")
+
+    print("\nAvailable MCP tools:\n")
+
 
     for tool in tools:
 
         print(tool.name)
 
+
+        # ------------------------------------------
         # Tavily
+        # ------------------------------------------
+
         if tool.name == "tavily_search":
+
             TAVILY_SEARCH_TOOL = tool
 
+
+        # ------------------------------------------
         # AviationStack
-        elif tool.name in ["list_airports", "list_airlines"]:
+        # ------------------------------------------
+
+        elif tool.name in [
+            "list_airports",
+            "list_airlines"
+        ]:
+
             aviation_tools.append(tool)
 
+
+        # ------------------------------------------
         # Weather
-        elif tool.name == "get_hourly_weather":
+        # ------------------------------------------
+
+        elif tool.name == "getweatherdata":
+
             weather_tools.append(tool)
 
+
+# --------------------------------------------------
+# Tavily Search
+# --------------------------------------------------
 
 async def run_tavily_search(query):
 
     await initialize_mcp()
+
+
+    if TAVILY_SEARCH_TOOL is None:
+
+        raise ValueError(
+            "Tavily search tool not found."
+        )
+
 
     result = await TAVILY_SEARCH_TOOL.ainvoke(
         {
@@ -112,8 +173,13 @@ async def run_tavily_search(query):
         }
     )
 
+
     return result
 
+
+# --------------------------------------------------
+# Aviation MCP Call
+# --------------------------------------------------
 
 async def aviation_mcp_call(
     tool_name: str,
@@ -122,25 +188,37 @@ async def aviation_mcp_call(
 
     await initialize_mcp()
 
+
     tool = None
+
 
     for t in aviation_tools:
 
         if t.name == tool_name:
+
             tool = t
+
             break
 
+
     if tool is None:
+
         raise ValueError(
-            f"Aviation tool '{tool_name}' not found"
+            f"Aviation tool '{tool_name}' not found."
         )
+
 
     result = await tool.ainvoke(
         tool_args or {}
     )
 
+
     return result
 
+
+# --------------------------------------------------
+# Weather MCP Call
+# --------------------------------------------------
 
 async def weather_mcp_call(
     tool_name: str,
@@ -149,21 +227,60 @@ async def weather_mcp_call(
 
     await initialize_mcp()
 
+
     tool = None
+
 
     for t in weather_tools:
 
         if t.name == tool_name:
+
             tool = t
+
             break
 
+
     if tool is None:
+
         raise ValueError(
-            f"Weather tool '{tool_name}' not found"
+            f"Weather tool '{tool_name}' not found."
         )
+
 
     result = await tool.ainvoke(
         tool_args or {}
     )
 
+
     return result
+
+
+# --------------------------------------------------
+# Test MCP Tools
+# --------------------------------------------------
+
+async def get_tools():
+
+    tools = await client.get_tools()
+
+
+    print("\n==============================")
+    print("AVAILABLE MCP TOOLS")
+    print("==============================\n")
+
+
+    for tool in tools:
+
+        print(f"Tool: {tool.name}")
+        print(f"Description: {tool.description}")
+        print(f"Schema: {tool.args_schema}")
+        print()
+
+
+# --------------------------------------------------
+# Run directly
+# --------------------------------------------------
+
+if __name__ == "__main__":
+
+    asyncio.run(get_tools())

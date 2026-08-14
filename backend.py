@@ -122,67 +122,118 @@ def hotel_agent(state:TravelState):
         ],
         "llm_calls": state.get("llm_calls",0)+1
     }
+
+# weather agent using mcp server
+# weather agent using mcp server
 def weather_agent(state: TravelState):
 
     query = state["user_query"]
 
-    # Get weather information from MCP
+    # Step 1: Extract the destination city from the user's query
+    city_response = llm.invoke([
+        SystemMessage(
+            content="""
+You are a travel location extractor.
+
+Extract the main destination city from the user's travel query.
+
+Return ONLY the city name.
+Do not return any explanation.
+"""
+        ),
+        HumanMessage(content=query)
+    ])
+
+    city = city_response.content.strip()
+
+    # Step 2: Call Weather MCP Server
     weather_data = asyncio.run(
         weather_mcp_call(
-            "get_hourly_weather",
+            "getweatherdata",
             {
-                "location": query
+                "city": city,
+                "units": "c",
+                "lang": "en"
             }
         )
     )
 
+    # Limit raw weather data so the LLM request does not become too large
+    weather_data = str(weather_data)[:12000]
+
+    # Step 3: Convert raw weather data into a user-friendly forecast
     weather_prompt = f"""
 You are an expert travel weather assistant.
 
-User travel query:
+User trip:
 {query}
 
-Weather information retrieved from the weather service:
+Destination:
+{city}
+
+Weather data:
 {weather_data}
 
-Create a clear weather section for the travel plan.
+Create a clear weather report using ONLY the provided data.
 
-Use exactly this style:
-
-## 🌤️ Weather Information
-
-Start with a short paragraph describing the overall weather
-conditions at the destination.
-
-Then provide the forecast information using bullet points.
-
-For example:
+Use this structure:
 
 ## 🌤️ Weather Information
 
-Japan's weather can be quite varied. Currently, the temperature
-is around XX°C with [condition] and humidity of XX%.
+Give a short overview of the current weather.
 
-The forecast includes:
+Include when available:
+- Temperature
+- Weather condition
+- Humidity
+- Feels-like temperature
+- Wind speed
 
-- [Weather condition] with a temperature of XX°C
-- [Weather condition] with a temperature of XX°C
-- [Weather condition] with a temperature of XX°C
+### 📅 Weather Forecast
 
-Then provide a short practical travel recommendation such as
-clothing, hydration, umbrella/rain protection, or planning
-outdoor activities, but ONLY when supported by the weather data.
+Show the available forecast day-by-day.
 
-Important rules:
+For each available day include:
 
-1. Use ONLY the weather information provided.
-2. Do not invent temperatures or weather conditions.
-3. Do not invent humidity, wind, rainfall, or forecasts.
-4. If some information is unavailable, simply don't mention it.
-5. Do not mention MCP, APIs, tools, or internal implementation.
-6. Keep the weather section informative but not unnecessarily long.
-7. Use bullet points for forecast information.
-8. Return ONLY the weather section.
+- Date
+- Weather condition
+- Temperature
+- High temperature
+- Low temperature
+- Rain/precipitation
+- Humidity
+- Wind
+
+Example:
+
+- **Day 1 — Date**
+  - Condition: ...
+  - Temperature: ...°C
+  - High: ...°C
+  - Low: ...°C
+  - Humidity: ...%
+  - Wind: ...
+
+Continue for all forecast information provided.
+
+### 🧳 Travel Weather Advice
+
+Based only on the weather data:
+
+- What clothes to pack
+- Whether rain protection is useful
+- Hydration or sun protection if appropriate
+- Whether outdoor sightseeing may be affected
+- Practical travel advice
+
+IMPORTANT:
+
+1. Do not invent weather information.
+2. Do not invent temperatures or dates.
+3. Use only the provided weather data.
+4. If information is unavailable, omit it.
+5. Keep the response clear and concise.
+6. Do not mention MCP, tools, agents, APIs, LangGraph, or implementation details.
 """
 
     response = llm.invoke([
@@ -197,7 +248,7 @@ Important rules:
         "messages": [
             AIMessage(content=response.content)
         ],
-        "llm_calls": state.get("llm_calls", 0) + 1
+        "llm_calls": state.get("llm_calls", 0) + 2
     }
 
 def itinerary_agent(state: TravelState):
@@ -212,13 +263,13 @@ USER QUERY:
 {state["user_query"]}
 
 FLIGHT INFORMATION:
-{state["flight_result"]}
+{state["flight_result"][:3000]}
 
 HOTEL INFORMATION:
-{state["hotel_result"]}
+{state["hotel_result"][:4000]}
 
 WEATHER INFORMATION:
-{state["weather_result"]}
+{state["weather_result"][:4000]}
 
 Create a practical, budget-friendly and easy-to-follow itinerary.
 
@@ -481,6 +532,7 @@ def run_travel_agent(user_query:str,thread_id:str|None=None):
             "user_query":user_query,
             "flight_result":"",
             "hotel_result":"",
+            "weather_result":"",
             "itinerary":"",
             "llm_calls":0
         },
@@ -495,6 +547,7 @@ def run_travel_agent(user_query:str,thread_id:str|None=None):
         "final_result":final_result,
         "flight_result":result.get('flight_result', ''),
         "hotel_result":result.get('hotel_result', ''),
+        "weather_result":result.get('weather_result', ''),
         "itinerary":result.get('itinerary', ''),
         "llm_calls":result['llm_calls']
 
