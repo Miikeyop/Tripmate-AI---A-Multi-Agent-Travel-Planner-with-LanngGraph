@@ -60,7 +60,7 @@ def get_database_url():
 # ============================================================
 
 llm = ChatGroq(
-    model="llama-3.1-8b-instant",
+    model="openai/gpt-oss-20b",
     api_key=os.getenv("GROQ_API_KEY")
 )
 
